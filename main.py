@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify
 from pybit.unified_trading import HTTP
 import os
+import json
+from threading import Thread
 
 app = Flask(__name__)
 
@@ -9,7 +11,7 @@ API_KEY = os.getenv("BYBIT_API_KEY")
 API_SECRET = os.getenv("BYBIT_API_SECRET")
 
 session = HTTP(
-    testnet=False,  # coloque True se for usar testnet
+    testnet=False,  # True se usar testnet
     api_key=API_KEY,
     api_secret=API_SECRET,
 )
@@ -18,28 +20,16 @@ session = HTTP(
 def home():
     return "Bot Bybit rodando 🚀"
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    import json
 
-data = request.get_data(as_text=True)
-
-try:
-    data = json.loads(data)
-except:
-    return jsonify({"error": "JSON inválido"}), 400
-
-    symbol = data.get("symbol")
-    side = data.get("side")  # Buy ou Sell
-    qty = float(data.get("qty"))
-    sl = float(data.get("sl"))
-    tp1 = float(data.get("tp1"))
-    tp2 = float(data.get("tp2"))
-    tp3 = float(data.get("tp3"))
+# ===== FUNÇÃO QUE EXECUTA O TRADE =====
+def executar_ordem(symbol, side, qty, sl, tp1, tp2, tp3):
 
     try:
+
+        print("Executando trade...")
+
         # Ordem principal
-        order = session.place_order(
+        session.place_order(
             category="linear",
             symbol=symbol,
             side=side,
@@ -54,7 +44,7 @@ except:
             stopLoss=str(sl),
         )
 
-        # Take Profits (parciais)
+        # Take Profit 1
         session.place_order(
             category="linear",
             symbol=symbol,
@@ -65,6 +55,7 @@ except:
             reduceOnly=True,
         )
 
+        # Take Profit 2
         session.place_order(
             category="linear",
             symbol=symbol,
@@ -75,6 +66,7 @@ except:
             reduceOnly=True,
         )
 
+        # Take Profit 3
         session.place_order(
             category="linear",
             symbol=symbol,
@@ -85,7 +77,38 @@ except:
             reduceOnly=True,
         )
 
-        return jsonify({"status": "Ordem enviada com sucesso"})
+        print("Trade executado com sucesso")
+
+    except Exception as e:
+        print("Erro ao executar trade:", e)
+
+
+# ===== WEBHOOK DO TRADINGVIEW =====
+@app.route("/webhook", methods=["POST"])
+def webhook():
+
+    try:
+
+        data = request.get_data(as_text=True)
+        data = json.loads(data)
+
+        symbol = data.get("symbol")
+        side = data.get("side")
+        qty = float(data.get("qty"))
+        sl = float(data.get("sl"))
+        tp1 = float(data.get("tp1"))
+        tp2 = float(data.get("tp2"))
+        tp3 = float(data.get("tp3"))
+
+        print("Webhook recebido:", data)
+
+        # Executa trade em segundo plano (evita timeout)
+        Thread(
+            target=executar_ordem,
+            args=(symbol, side, qty, sl, tp1, tp2, tp3)
+        ).start()
+
+        return jsonify({"status": "ok"}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
