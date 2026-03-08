@@ -20,7 +20,14 @@ def home():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json
+    import json
+
+data = request.get_data(as_text=True)
+
+try:
+    data = json.loads(data)
+except:
+    return jsonify({"error": "JSON inválido"}), 400
 
     symbol = data.get("symbol")
     side = data.get("side")  # Buy ou Sell
